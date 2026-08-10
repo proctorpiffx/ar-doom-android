@@ -1,6 +1,5 @@
 package com.ardoom.rendering
 
-import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -11,6 +10,7 @@ import java.nio.FloatBuffer
 /**
  * Renders the ARCore camera feed as the fullscreen background.
  * Uses the OES external texture that ARCore updates each frame.
+ * UV transform is handled via session.setDisplayGeometry() — here we use identity.
  */
 class BackgroundRenderer {
 
@@ -66,6 +66,11 @@ class BackgroundRenderer {
     }
 
     init {
+        // Identity UV transform
+        uvTransform[0] = 1f; uvTransform[1] = 0f; uvTransform[2] = 0f
+        uvTransform[3] = 0f; uvTransform[4] = 1f; uvTransform[5] = 0f
+        uvTransform[6] = 0f; uvTransform[7] = 0f; uvTransform[8] = 1f
+
         // Create the external OES texture
         val textures = IntArray(1)
         GLES30.glGenTextures(1, textures, 0)
@@ -76,8 +81,11 @@ class BackgroundRenderer {
 
         quadCoords = ByteBuffer.allocateDirect(COORDS.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().put(COORDS)
+        quadCoords.position(0)
+
         quadTexCoords = ByteBuffer.allocateDirect(TEX_COORDS.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().put(TEX_COORDS)
+        quadTexCoords.position(0)
 
         compileProgram()
     }
@@ -100,32 +108,6 @@ class BackgroundRenderer {
 
     fun draw(session: Session, frame: Frame) {
         session.setCameraTextureName(textureId)
-
-        // Use identity UV transform as fallback — the display geometry
-        // handles rotation via session.setDisplayGeometry()
-        uvTransform[0] = 1f; uvTransform[1] = 0f; uvTransform[2] = 0f
-        uvTransform[3] = 0f; uvTransform[4] = 1f; uvTransform[5] = 0f
-        uvTransform[6] = 0f; uvTransform[7] = 0f; uvTransform[8] = 1f
-
-        // Try to get the actual UV transform from ARCore
-        try {
-            val transform = frame.transformCoordinates2d(
-                com.google.ar.core.Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
-                quadCoords,
-                com.google.ar.core.Coordinates2d.TEXTURE_NORMALIZED
-            )
-            val tc = transform.textureCoordinates
-            if (tc != null && tc.remaining() >= 12) {
-                // ARCore returns a 4x3 matrix packed as [u,v,w] per row
-                for (i in 0 until 3) {
-                    uvTransform[i * 3 + 0] = tc.get(i * 3 + 0)
-                    uvTransform[i * 3 + 1] = tc.get(i * 3 + 1)
-                    uvTransform[i * 3 + 2] = tc.get(i * 3 + 2)
-                }
-            }
-        } catch (e: Exception) {
-            // Use identity transform if ARCore transform fails
-        }
 
         GLES30.glDisable(GLES30.GL_DEPTH_TEST)
         GLES30.glDepthMask(false)

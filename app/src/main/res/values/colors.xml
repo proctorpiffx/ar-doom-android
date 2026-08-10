@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="doom_red">#FFFF0000</color>
+    <color name="doom_dark_red">#FF880000</color>
+    <color name="doom_green">#FF00FF00</color>
+    <color name="doom_yellow">#FFFFFF00</color>
+    <color name="doom_gray">#FF444444</color>
+    <color name="doom_dark">#FF0A0A0A</color>
+    <color name="doom_blood">#FFAA0000</color>
+    <color name="doom_hud_bg">#AA000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

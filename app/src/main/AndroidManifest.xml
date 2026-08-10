@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Camera — required for AR -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- OpenGL ES 3.0 — required for rendering DOOM sprites in AR -->
+    <uses-feature android:name="android.opengl.gles.3.0" android:required="true" />
+
+    <!-- ARCore requirement -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+
+    <!-- Keep screen on during gameplay -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Haptics for firing / damage feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name=".ARDoomApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.AR Doom"
+        android:supportsRtl="true">
+
+        <!-- ARCore: mark as AR-required app -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AR Doom">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

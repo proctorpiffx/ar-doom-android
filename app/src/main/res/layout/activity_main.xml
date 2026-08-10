@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- AR Camera Surface -->
+        <android.opengl.GLSurfaceView
+            android:id="@+id/ar_surface_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- HUD Overlay -->
+        <RelativeLayout
+            android:id="@+id/hud_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp">
+
+            <!-- Health -->
+            <TextView
+                android:id="@+id/hud_health"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentStart="true"
+                android:text="@string/hud_health_label"
+                android:textColor="@color/doom_red"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:shadowColor="@color/black"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="2" />
+
+            <!-- Ammo -->
+            <TextView
+                android:id="@+id/hud_ammo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:text="@string/hud_ammo_label"
+                android:textColor="@color/doom_yellow"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:shadowColor="@color/black"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="2" />
+
+            <!-- Score -->
+            <TextView
+                android:id="@+id/hud_score"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:text="@string/hud_score_label"
+                android:textColor="@color/white"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:shadowColor="@color/black"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="2" />
+
+            <!-- Wave -->
+            <TextView
+                android:id="@+id/hud_wave"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentStart="true"
+                android:text="@string/hud_wave_label"
+                android:textColor="@color/doom_green"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:shadowColor="@color/black"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="2" />
+
+            <!-- Crosshair -->
+            <View
+                android:id="@+id/crosshair"
+                android:layout_width="4dp"
+                android:layout_height="4dp"
+                android:layout_centerInParent="true"
+                android:background="@color/doom_red" />
+
+        </RelativeLayout>
+
+    </FrameLayout>
+</layout>

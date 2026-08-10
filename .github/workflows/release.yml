@@ -23,11 +23,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            platforms;android-34
-            platforms;android-35
-            build-tools;34.0.0
+          accept-android-sdk-licenses: true
+
+      - name: Install SDK components
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "platforms;android-35" \
+            "build-tools;34.0.0" || true
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -42,7 +46,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Release AAB
-        run: ./gradlew bundleRelease --no-daemon
+        run: ./gradlew bundleRelease --no-daemon --stacktrace
         env:
           ARDOOM_STORE_FILE: ${{ secrets.ARDOOM_STORE_FILE }}
           ARDOOM_STORE_PASSWORD: ${{ secrets.ARDOOM_STORE_PASSWORD }}
@@ -50,7 +54,7 @@ jobs:
           ARDOOM_KEY_PASSWORD: ${{ secrets.ARDOOM_KEY_PASSWORD }}
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           ARDOOM_STORE_FILE: ${{ secrets.ARDOOM_STORE_FILE }}
           ARDOOM_STORE_PASSWORD: ${{ secrets.ARDOOM_STORE_PASSWORD }}

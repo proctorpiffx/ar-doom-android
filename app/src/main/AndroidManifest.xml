@@ -22,7 +22,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.AR Doom"
+        android:theme="@style/Theme.ARDoom"
         android:supportsRtl="true">
 
         <!-- ARCore: mark as AR-required app -->
@@ -35,7 +35,7 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.AR Doom">
+            android:theme="@style/Theme.ARDoom">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

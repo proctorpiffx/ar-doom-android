@@ -1,5 +1,5 @@
 [versions]
-agp = "8.5.0"
+agp = "8.6.0"
 kotlin = "2.0.0"
 arcore = "1.42.0"
 sceneform = "1.21.0"

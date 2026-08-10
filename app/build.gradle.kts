@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.ardoom"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.ardoom"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 2
+        versionName = "0.1.1-alpha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -20,24 +20,6 @@ android {
             abiFilters += listOf("arm64-v8a")
         }
     }
-
-    // ─── Release signing ──────────────────────────────────────────
-    // For Play Store: create a keystore and reference it via local.properties
-    // or environment variables so secrets never go in git.
-    //
-    // Create keystore:
-    //   keytool -genkey -v -keystore ardoom-release.keystore \
-    //     -alias ardoom -keyalg RSA -keysize 2048 -validity 10000
-    //
-    // Then in local.properties (gitignored):
-    //   ardoom.storeFile=/path/to/ardoom-release.keystore
-    //   ardoom.storePassword=yourpassword
-    //   ardoom.keyAlias=ardoom
-    //   ardoom.keyPassword=yourpassword
-    //
-    // Or set env vars: ARDOOM_STORE_FILE, ARDOOM_STORE_PASSWORD,
-    //                  ARDOOM_KEY_ALIAS, ARDOOM_KEY_PASSWORD
-    // ──────────────────────────────────────────────────────────────
 
     val storeFilePath = (project.findProperty("ardoom.storeFile") as String?)
         ?: System.getenv("ARDOOM_STORE_FILE")
@@ -66,7 +48,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -90,9 +72,6 @@ android {
         viewBinding = true
     }
 
-    // Play Store: generate AAB (App Bundle) by default
-    // Run: ./gradlew bundleRelease
-    // Or APK: ./gradlew assembleRelease
     bundle {
         abi {
             enableSplit = true

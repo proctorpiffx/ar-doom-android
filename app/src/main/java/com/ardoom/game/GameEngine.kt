@@ -8,10 +8,6 @@ import com.google.ar.core.Pose
 /**
  * The DOOM game engine — drives the game loop, enemy spawning,
  * combat logic, health/ammo tracking, and score.
- *
- * In AR mode, the player physically moves/looks around in real space.
- * The phone is the weapon — tap to shoot. Enemies spawn on detected
- * surfaces in front of the player.
  */
 class GameEngine(private val context: Context) {
 
@@ -22,49 +18,63 @@ class GameEngine(private val context: Context) {
     var score: Int = 0
     var currentWeapon: Weapon = Weapon.PISTOL
 
+    // Flags for the renderer to read
+    var playerWasHit: Boolean = false
+    var enemyDiedThisFrame: Boolean = false
+
     // Enemy management
     private val enemies = mutableListOf<Enemy>()
-    private val projectiles = mutableListOf<Projectile>()
 
     // Game state
-    var gameState: GameState = GameState.PLAYING
+    var gameState: GameState = GameState.READY
     var waveNumber: Int = 1
-    var enemiesPerWave: Int = 3
+    private var enemiesPerWave: Int = 3
+    private var enemiesSpawnedThisWave: Int = 0
     private var lastSpawnTime: Long = 0
     private var lastDamageTime: Long = 0
 
-    fun update(deltaTime: Float, cameraPose: Camera, arManager: com.ardoom.ar.ARCameraManager, frame: com.google.ar.core.Frame) {
+    fun startGame() {
+        health = 100
+        armor = 0
+        ammo = 50
+        score = 0
+        currentWeapon = Weapon.PISTOL
+        waveNumber = 1
+        enemiesPerWave = 3
+        enemiesSpawnedThisWave = 0
+        enemies.clear()
+        gameState = GameState.PLAYING
+        lastSpawnTime = System.currentTimeMillis()
+        Log.i(TAG, "Game started — wave 1")
+    }
+
+    fun update(deltaTime: Float, camera: Camera, arManager: com.ardoom.ar.ARCameraManager, frame: com.google.ar.core.Frame) {
         if (gameState != GameState.PLAYING) return
 
         val now = System.currentTimeMillis()
 
-        // Spawn enemies on surfaces in front of the player
-        if (shouldSpawn(now) && enemies.size < 5) {
-            spawnEnemyInFrontOfPlayer(cameraPose)
+        // Spawn enemies
+        if (shouldSpawn(now) && enemiesSpawnedThisWave < enemiesPerWave && enemies.size < 6) {
+            spawnEnemyInFrontOfPlayer(camera)
+            enemiesSpawnedThisWave++
         }
 
-        // Update all enemies — move toward player, attempt attacks
-        updateEnemies(deltaTime, cameraPose, now)
-
-        // Update projectiles
-        updateProjectiles(deltaTime)
+        // Update enemies
+        updateEnemies(deltaTime, camera, now)
 
         // Check wave progression
-        if (enemies.isEmpty() && waveNumber < 20) {
+        if (enemiesSpawnedThisWave >= enemiesPerWave && enemies.isEmpty() && waveNumber < 50) {
             startNextWave()
         }
 
         // Check death
         if (health <= 0) {
+            health = 0
             gameState = GameState.GAME_OVER
-            Log.i(TAG, "Player died. Final score: $score, reached wave $waveNumber")
+            Log.i(TAG, "Player died. Score: $score, Wave: $waveNumber")
         }
     }
 
-    /**
-     * Fire the current weapon from screen center tap.
-     * Raycasts into AR space; if it hits an enemy, deals damage.
-     */
     fun fire(screenX: Float, screenY: Float, arManager: com.ardoom.ar.ARCameraManager, frame: com.google.ar.core.Frame) {
         if (ammo <= 0) {
             Log.i(TAG, "Out of ammo!")
@@ -72,52 +82,54 @@ class GameEngine(private val context: Context) {
         }
 
         ammo--
-        val hitPose = arManager.raycastToSurface(frame, screenX, screenY)
-
-        if (hitPose != null) {
-            // Check if any enemy is near the hit point
-            val hitPoint = floatArrayOf(0f, 0f, 0f)
-            hitPose.getTranslation(hitPoint, 0)
-
-            val nearestEnemy = findNearestEnemyTo(hitPoint)
-            nearestEnemy?.takeDamage(currentWeapon.damage)
-        } else {
-            // Even without surface hit, check enemies in view direction
-            val camPose = frame.camera.displayOrientedPose
-            shootEnemiesInView(camPose)
-        }
-
-        // Haptic feedback handled by activity
+        val camPose = frame.camera.displayOrientedPose
+        shootEnemiesInView(camPose)
         Log.i(TAG, "Fired ${currentWeapon.name} — ammo: $ammo")
     }
 
     private fun shootEnemiesInView(camPose: Pose) {
         val cameraPos = FloatArray(3)
         camPose.getTranslation(cameraPos, 0)
-        val forward = floatArrayOf(0f, 0f, -1f)
-        // Transform forward by camera rotation
+
+        // Camera forward vector from quaternion
         val quat = FloatArray(4)
         camPose.getRotationQuaternion(quat, 0)
-        // Simple distance check: enemies within a cone in front
-        val enemiesToRemove = mutableListOf<Enemy>()
+        val forward = rotateVector(floatArrayOf(0f, 0f, -1f), quat)
+
+        val toRemove = mutableListOf<Enemy>()
         for (enemy in enemies) {
+            if (enemy.state == EnemyState.DEAD || enemy.state == EnemyState.DYING) continue
+
             val dx = enemy.position[0] - cameraPos[0]
             val dy = enemy.position[1] - cameraPos[1]
             val dz = enemy.position[2] - cameraPos[2]
             val distance = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
-            if (distance < MAX_FIRE_RANGE) {
-                // Simple: if enemy is within range and roughly in front, hit it
+
+            if (distance < MAX_FIRE_RANGE && distance > 0.1f) {
                 val dot = (dx * forward[0] + dy * forward[1] + dz * forward[2]) / distance
-                if (dot > 0.7f) {
+                if (dot > 0.65f) {
                     enemy.takeDamage(currentWeapon.damage)
                     if (!enemy.isAlive()) {
                         score += enemy.scoreValue
-                        enemiesToRemove.add(enemy)
+                        enemyDiedThisFrame = true
+                        toRemove.add(enemy)
                     }
                 }
             }
         }
-        enemies.removeAll(enemiesToRemove)
+        enemies.removeAll(toRemove)
+    }
+
+    private fun rotateVector(v: FloatArray, q: FloatArray): FloatArray {
+        // Quaternion rotation: v' = q * v * q^-1
+        val qx = q[0]; val qy = q[1]; val qz = q[2]; val qw = q[3]
+        val vx = v[0]; val vy = v[1]; val vz = v[2]
+        return floatArrayOf(
+            vx + 2f * (qx * vz * vy - qy * vz - qz * vy + qw * vx) * 0f + // simplified
+            (1f - 2f * (qy * qy + qz * qz)) * vx + 2f * (qx * qy - qw * qz) * vy + 2f * (qx * qz + qw * qy) * vz,
+            2f * (qx * qy + qw * qz) * vx + (1f - 2f * (qx * qx + qz * qz)) * vy + 2f * (qy * qz - qw * qx) * vz,
+            2f * (qx * qz - qw * qy) * vx + 2f * (qy * qz + qw * qx) * vy + (1f - 2f * (qx * qx + qy * qy)) * vz
+        )
     }
 
     private fun spawnEnemyInFrontOfPlayer(camera: Camera) {
@@ -125,17 +137,38 @@ class GameEngine(private val context: Context) {
         val cameraPos = FloatArray(3)
         cameraPose.getTranslation(cameraPos, 0)
 
-        // Spawn 1.5 - 4 meters in front of the player
-        val distance = (1.5f + Math.random().toFloat() * 2.5f)
-        val angle = (-30 + Math.random() * 60) * Math.PI / 180  // ±30 degrees
-        val spawnX = cameraPos[0] + (distance * Math.cos(angle)).toFloat()
-        val spawnY = cameraPos[1] // Same height as camera
-        val spawnZ = cameraPos[2] - distance
+        // Get camera forward direction
+        val quat = FloatArray(4)
+        cameraPose.getRotationQuaternion(quat, 0)
+        val forward = rotateVector(floatArrayOf(0f, 0f, -1f), quat)
 
-        val enemyType = when ((Math.random() * 100).toInt() % 3) {
-            0 -> EnemyType.IMP
-            1 -> EnemyType.SOLDIER
-            else -> EnemyType.DEMON
+        val distance = 2.0f + Math.random().toFloat() * 3.0f // 2-5 meters
+        val lateralOffset = (-1.5f + Math.random().toFloat() * 3.0f) // ±1.5m spread
+        val right = rotateVector(floatArrayOf(1f, 0f, 0f), quat)
+
+        val spawnX = cameraPos[0] + forward[0] * distance + right[0] * lateralOffset
+        val spawnY = cameraPos[1] + forward[1] * distance
+        val spawnZ = cameraPos[2] + forward[2] * distance
+
+        val enemyType = when {
+            waveNumber < 3 -> if (Math.random() < 0.6) EnemyType.SOLDIER else EnemyType.IMP
+            waveNumber < 6 -> {
+                val r = Math.random()
+                when {
+                    r < 0.4 -> EnemyType.SOLDIER
+                    r < 0.75 -> EnemyType.IMP
+                    else -> EnemyType.DEMON
+                }
+            }
+            else -> {
+                val r = Math.random()
+                when {
+                    r < 0.2 -> EnemyType.SOLDIER
+                    r < 0.5 -> EnemyType.IMP
+                    r < 0.75 -> EnemyType.DEMON
+                    else -> if (r < 0.9) EnemyType.CACODEMON else EnemyType.BARON
+                }
+            }
         }
 
         val enemy = Enemy(
@@ -143,7 +176,7 @@ class GameEngine(private val context: Context) {
             position = floatArrayOf(spawnX, spawnY, spawnZ)
         )
         enemies.add(enemy)
-        Log.i(TAG, "Spawned ${enemyType.name} at distance ${distance}m — wave $waveNumber")
+        Log.i(TAG, "Spawned ${enemyType.name} at ~${distance}m — wave $waveNumber (${enemiesSpawnedThisWave}/${enemiesPerWave})")
     }
 
     private fun updateEnemies(deltaTime: Float, camera: Camera, now: Long) {
@@ -155,8 +188,7 @@ class GameEngine(private val context: Context) {
         for (enemy in enemies) {
             enemy.update(deltaTime, cameraPos)
 
-            // Enemy attacks if close enough
-            if (enemy.distanceToPlayer(cameraPos) < ENEMY_ATTACK_RANGE && now - lastDamageTime > 1000) {
+            if (enemy.distanceToPlayer(cameraPos) < ENEMY_ATTACK_RANGE && now - lastDamageTime > 800) {
                 val damage = enemy.type.attackDamage
                 if (armor > 0) {
                     val absorbed = minOf(armor, damage / 3)
@@ -166,41 +198,15 @@ class GameEngine(private val context: Context) {
                     health -= damage
                 }
                 lastDamageTime = now
-                Log.i(TAG, "Player hit by ${enemy.type.name} for $damage — health: $health")
+                playerWasHit = true
+                Log.i(TAG, "Hit by ${enemy.type.name} for $damage — HP: $health")
             }
 
-            if (!enemy.isAlive()) {
+            if (!enemy.isAlive() && enemy.state == EnemyState.DEAD) {
                 toRemove.add(enemy)
             }
         }
         enemies.removeAll(toRemove)
-    }
-
-    private fun updateProjectiles(deltaTime: Float) {
-        val toRemove = mutableListOf<Projectile>()
-        for (proj in projectiles) {
-            proj.update(deltaTime)
-            if (proj.life <= 0) toRemove.add(proj)
-        }
-        projectiles.removeAll(toRemove)
-    }
-
-    private fun findNearestEnemyTo(point: FloatArray): Enemy? {
-        var nearest: Enemy? = null
-        var minDist = Float.MAX_VALUE
-
-        for (enemy in enemies) {
-            if (!enemy.isAlive()) continue
-            val dx = enemy.position[0] - point[0]
-            val dy = enemy.position[1] - point[1]
-            val dz = enemy.position[2] - point[2]
-            val dist = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
-            if (dist < minDist) {
-                minDist = dist
-                nearest = enemy
-            }
-        }
-        return if (minDist < 0.5f) nearest else null
     }
 
     private fun shouldSpawn(now: Long): Boolean =
@@ -209,10 +215,12 @@ class GameEngine(private val context: Context) {
     private fun startNextWave() {
         waveNumber++
         enemiesPerWave += 2
-        // Give the player some reward between waves
+        enemiesSpawnedThisWave = 0
         ammo += 20
         if (health < 100) health = minOf(100, health + 25)
-        Log.i(TAG, "Wave $waveNumber starting — enemies: $enemiesPerWave, health: $health, ammo: $ammo")
+        if (waveNumber % 3 == 0) armor = minOf(100, armor + 25)
+        lastSpawnTime = System.currentTimeMillis()
+        Log.i(TAG, "Wave $waveNumber — enemies: $enemiesPerWave, HP: $health, ammo: $ammo")
     }
 
     fun getEnemyCount(): Int = enemies.size
@@ -220,25 +228,26 @@ class GameEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "GameEngine"
-        private const val MAX_FIRE_RANGE = 15.0f  // meters
-        private const val ENEMY_ATTACK_RANGE = 1.5f  // meters
-        private const val SPAWN_INTERVAL_MS = 3000L  // 3 seconds between spawns
+        private const val MAX_FIRE_RANGE = 15.0f
+        private const val ENEMY_ATTACK_RANGE = 1.5f
+        private const val SPAWN_INTERVAL_MS = 2000L
     }
 }
 
 enum class GameState {
+    READY,
     PLAYING,
     PAUSED,
     GAME_OVER,
     VICTORY
 }
 
-enum class Weapon(val damage: Int, val fireRateMs: Long) {
-    PISTOL(damage = 25, fireRateMs = 300),
-    SHOTGUN(damage = 60, fireRateMs = 800),
-    CHAINGUN(damage = 20, fireRateMs = 100),
-    PLASMA(damage = 80, fireRateMs = 500),
-    BFG(damage = 500, fireRateMs = 1500)
+enum class Weapon(val damage: Int, val fireRateMs: Long, val displayName: String) {
+    PISTOL(damage = 25, fireRateMs = 300, displayName = "PISTOL"),
+    SHOTGUN(damage = 60, fireRateMs = 800, displayName = "SHOTGUN"),
+    CHAINGUN(damage = 20, fireRateMs = 100, displayName = "CHAINGUN"),
+    PLASMA(damage = 80, fireRateMs = 500, displayName = "PLASMA"),
+    BFG(damage = 500, fireRateMs = 1500, displayName = "BFG")
 }
 
 data class Projectile(

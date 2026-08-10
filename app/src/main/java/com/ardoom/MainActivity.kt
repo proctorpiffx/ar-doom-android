@@ -307,7 +307,7 @@ class MainActivity : AppCompatActivity() {
             hudHealth.text = getString(R.string.hud_health_label) + ": " + gameEngine.health
             hudAmmo.text = getString(R.string.hud_ammo_label) + ": " + gameEngine.ammo
             hudScore.text = getString(R.string.hud_score_label) + ": " + gameEngine.score
-            hudWave.text = getString(R.string.wave_label) + ": " + gameEngine.waveNumber
+            hudWave.text = getString(R.string.hud_wave_label) + ": " + gameEngine.waveNumber
             hudWeapon.text = gameEngine.currentWeapon.name
 
             hudHealth.setTextColor(

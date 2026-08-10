@@ -8,7 +8,6 @@ import com.ardoom.game.EnemyState
 import com.ardoom.game.GameEngine
 import com.ardoom.game.GameState
 import com.google.ar.core.Camera
-import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -131,7 +130,7 @@ class DoomRenderer(
                 }
             }
         } finally {
-            frame.close()
+            // Frame is managed by ARCore — no need to close
         }
     }
 
@@ -139,7 +138,6 @@ class DoomRenderer(
         if (gameEngine.gameState != GameState.PLAYING) return
         if (gameEngine.ammo <= 0) return
 
-        // Get the current frame and fire
         val frame = cameraManager.acquireFrame()
         if (frame != null) {
             gameEngine.fire(screenX, screenY, cameraManager, frame)
@@ -147,7 +145,6 @@ class DoomRenderer(
             muzzleFlashScreenX = screenX / viewportWidth
             muzzleFlashScreenY = screenY / viewportHeight
             callbacks?.onFire()
-            frame.close()
         }
     }
 

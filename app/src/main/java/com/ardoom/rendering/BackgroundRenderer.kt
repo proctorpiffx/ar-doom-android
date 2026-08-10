@@ -1,7 +1,7 @@
 package com.ardoom.rendering
 
+import android.opengl.GLES11Ext
 import android.opengl.GLES30
-import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import java.nio.ByteBuffer
@@ -11,8 +11,6 @@ import java.nio.FloatBuffer
 /**
  * Renders the ARCore camera feed as the fullscreen background.
  * Uses the OES external texture that ARCore updates each frame.
- *
- * This follows the official ARCore HelloAR rendering pattern.
  */
 class BackgroundRenderer {
 
@@ -29,6 +27,8 @@ class BackgroundRenderer {
     private val uvTransform = FloatArray(9)
 
     companion object {
+        private const val GL_TEXTURE_EXTERNAL_OES = 0x8D65
+
         private const val VERTEX_SHADER = """
             attribute vec4 a_Position;
             attribute vec2 a_TexCoord;
@@ -50,7 +50,6 @@ class BackgroundRenderer {
             }
         """
 
-        // Fullscreen quad in clip space (two triangles as a strip)
         private val COORDS = floatArrayOf(
             -1f, -1f,
              1f, -1f,
@@ -71,9 +70,9 @@ class BackgroundRenderer {
         val textures = IntArray(1)
         GLES30.glGenTextures(1, textures, 0)
         textureId = textures[0]
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_EXTERNAL_OES, textureId)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+        GLES30.glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureId)
+        GLES30.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
 
         quadCoords = ByteBuffer.allocateDirect(COORDS.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().put(COORDS)
@@ -100,22 +99,32 @@ class BackgroundRenderer {
     }
 
     fun draw(session: Session, frame: Frame) {
-        // Ensure the camera texture is set on the session
         session.setCameraTextureName(textureId)
 
-        // Get the UV transform for display rotation
-        val transform = frame.transformCoordinates2d(
-            Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
-            quadCoords,
-            Coordinates2d.TEXTURE_NORMALIZED
-        )
-        // The transform is a 4x3 matrix but we need 3x3 for the shader
-        val transformArray = transform.textureCoordinates
-        // Build 3x3 from the 4x3 packed by ARCore (rows of [u, v, w])
-        for (i in 0 until 3) {
-            uvTransform[i * 3 + 0] = transformArray[i * 4 + 0]
-            uvTransform[i * 3 + 1] = transformArray[i * 4 + 1]
-            uvTransform[i * 3 + 2] = transformArray[i * 4 + 3]
+        // Use identity UV transform as fallback — the display geometry
+        // handles rotation via session.setDisplayGeometry()
+        uvTransform[0] = 1f; uvTransform[1] = 0f; uvTransform[2] = 0f
+        uvTransform[3] = 0f; uvTransform[4] = 1f; uvTransform[5] = 0f
+        uvTransform[6] = 0f; uvTransform[7] = 0f; uvTransform[8] = 1f
+
+        // Try to get the actual UV transform from ARCore
+        try {
+            val transform = frame.transformCoordinates2d(
+                com.google.ar.core.Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
+                quadCoords,
+                com.google.ar.core.Coordinates2d.TEXTURE_NORMALIZED
+            )
+            val tc = transform.textureCoordinates
+            if (tc != null && tc.remaining() >= 12) {
+                // ARCore returns a 4x3 matrix packed as [u,v,w] per row
+                for (i in 0 until 3) {
+                    uvTransform[i * 3 + 0] = tc.get(i * 3 + 0)
+                    uvTransform[i * 3 + 1] = tc.get(i * 3 + 1)
+                    uvTransform[i * 3 + 2] = tc.get(i * 3 + 2)
+                }
+            }
+        } catch (e: Exception) {
+            // Use identity transform if ARCore transform fails
         }
 
         GLES30.glDisable(GLES30.GL_DEPTH_TEST)
@@ -124,7 +133,7 @@ class BackgroundRenderer {
         GLES30.glUseProgram(program)
 
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_EXTERNAL_OES, textureId)
+        GLES30.glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES30.glUniform1i(textureUniform, 0)
 
         GLES30.glUniformMatrix3fv(uvTransformUniform, 1, false, uvTransform, 0)

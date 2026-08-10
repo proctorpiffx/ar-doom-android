@@ -1,5 +1,6 @@
 package com.ardoom.rendering
 
+import android.content.Context
 import android.opengl.GLES30
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -72,7 +73,7 @@ class EffectShader(private val context: Context) {
         viewMatrix: FloatArray,
         projectionMatrix: FloatArray
     ) {
-        draw(modelMatrix, viewMatrix, projectionMatrix, 1.0f, 0.8f, 0.2f)  // orange-yellow
+        draw(modelMatrix, viewMatrix, projectionMatrix, 1.0f, 0.8f, 0.2f)
     }
 
     fun drawProjectile(

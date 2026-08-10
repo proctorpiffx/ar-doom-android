@@ -86,7 +86,7 @@ object SpriteTextureManager {
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
 
         // Premultiply alpha for correct blending
-        GLES30.glPixelStorei(GLES30.GL_UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+        // Premultiplied alpha handled by GLUtils
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, bitmap, 0)
 
         return textures[0]

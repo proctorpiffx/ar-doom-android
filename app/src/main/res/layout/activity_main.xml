@@ -20,6 +20,23 @@
         android:shadowDy="2"
         android:shadowRadius="3" />
 
+    <!-- Top-center: FPS indicator -->
+    <TextView
+        android:id="@+id/hud_fps"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:text="FPS: 60"
+        android:textColor="@color/doom_yellow"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        android:shadowColor="@color/black"
+        android:shadowDx="2"
+        android:shadowDy="2"
+        android:shadowRadius="3" />
+
     <!-- Top-right: Score -->
     <TextView
         android:id="@+id/hud_score"
@@ -36,7 +53,7 @@
         android:shadowDy="2"
         android:shadowRadius="3" />
 
-    <!-- Center: Message overlay (wave announcements, game over) -->
+    <!-- Center: Message overlay (wave announcements) -->
     <TextView
         android:id="@+id/hud_message"
         android:layout_width="wrap_content"

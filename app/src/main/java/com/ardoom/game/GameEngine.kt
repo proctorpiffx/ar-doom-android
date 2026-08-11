@@ -7,7 +7,8 @@ import com.google.ar.core.Pose
 
 /**
  * The DOOM game engine — drives the game loop, enemy spawning,
- * combat logic, health/ammo tracking, and score.
+ * pickup spawning/collection, combat logic, health/ammo tracking,
+ * difficulty scaling, and stats/score tracking.
  */
 class GameEngine(private val context: Context) {
 
@@ -21,9 +22,18 @@ class GameEngine(private val context: Context) {
     // Flags for the renderer to read
     var playerWasHit: Boolean = false
     var enemyDiedThisFrame: Boolean = false
+    var pickupCollectedThisFrame: Boolean = false
 
-    // Enemy management
+    // Game stats & tracking
+    var difficulty: Difficulty = Difficulty.MEDIUM
+    var kills: Int = 0
+    var shotsFired: Int = 0
+    var shotsHit: Int = 0
+    var timePlayed: Float = 0f
+
+    // Entity management
     private val enemies = mutableListOf<Enemy>()
+    private val pickups = mutableListOf<Pickup>()
 
     // Game state
     var gameState: GameState = GameState.READY
@@ -34,33 +44,47 @@ class GameEngine(private val context: Context) {
     private var lastDamageTime: Long = 0
 
     fun startGame() {
+        startGame(Difficulty.MEDIUM)
+    }
+
+    fun startGame(diff: Difficulty) {
+        difficulty = diff
         health = 100
         armor = 0
         ammo = 50
         score = 0
+        kills = 0
+        shotsFired = 0
+        shotsHit = 0
+        timePlayed = 0f
         currentWeapon = Weapon.PISTOL
         waveNumber = 1
-        enemiesPerWave = 3
+        enemiesPerWave = (3 * difficulty.spawnRateMultiplier).toInt().coerceAtLeast(2)
         enemiesSpawnedThisWave = 0
         enemies.clear()
+        pickups.clear()
         gameState = GameState.PLAYING
         lastSpawnTime = System.currentTimeMillis()
-        Log.i(TAG, "Game started — wave 1")
+        Log.i(TAG, "Game started — wave 1, difficulty: ${difficulty.displayName}")
     }
 
     fun update(deltaTime: Float, camera: Camera, arManager: com.ardoom.ar.ARCameraManager, frame: com.google.ar.core.Frame) {
         if (gameState != GameState.PLAYING) return
 
+        timePlayed += deltaTime
         val now = System.currentTimeMillis()
 
         // Spawn enemies
-        if (shouldSpawn(now) && enemiesSpawnedThisWave < enemiesPerWave && enemies.size < 6) {
+        if (shouldSpawn(now) && enemiesSpawnedThisWave < enemiesPerWave && enemies.size < 8) {
             spawnEnemyInFrontOfPlayer(camera)
             enemiesSpawnedThisWave++
         }
 
         // Update enemies
         updateEnemies(deltaTime, camera, now)
+
+        // Update pickups & check collections
+        updatePickups(deltaTime, camera)
 
         // Check wave progression
         if (enemiesSpawnedThisWave >= enemiesPerWave && enemies.isEmpty() && waveNumber < 50) {
@@ -71,7 +95,7 @@ class GameEngine(private val context: Context) {
         if (health <= 0) {
             health = 0
             gameState = GameState.GAME_OVER
-            Log.i(TAG, "Player died. Score: $score, Wave: $waveNumber")
+            Log.i(TAG, "Player died. Score: $score, Wave: $waveNumber, Kills: $kills")
         }
     }
 
@@ -82,6 +106,7 @@ class GameEngine(private val context: Context) {
         }
 
         ammo--
+        shotsFired++
         val camPose = frame.camera.displayOrientedPose
         shootEnemiesInView(camPose)
         Log.i(TAG, "Fired ${currentWeapon.name} — ammo: $ammo")
@@ -108,10 +133,13 @@ class GameEngine(private val context: Context) {
             if (distance < MAX_FIRE_RANGE && distance > 0.1f) {
                 val dot = (dx * forward[0] + dy * forward[1] + dz * forward[2]) / distance
                 if (dot > 0.65f) {
+                    shotsHit++
                     enemy.takeDamage(currentWeapon.damage)
                     if (!enemy.isAlive()) {
-                        score += enemy.scoreValue
+                        kills++
+                        score += (enemy.scoreValue * difficulty.scoreMultiplier).toInt()
                         enemyDiedThisFrame = true
+                        onEnemyDefeated(enemy)
                         toRemove.add(enemy)
                     }
                 }
@@ -120,12 +148,70 @@ class GameEngine(private val context: Context) {
         enemies.removeAll(toRemove)
     }
 
+    private fun onEnemyDefeated(enemy: Enemy) {
+        // Spawn 1-2 pickups near enemy death location every 3rd wave
+        if (waveNumber % 3 == 0) {
+            spawnPickupNear(enemy.position)
+            if (Math.random() < 0.5) {
+                spawnPickupNear(enemy.position)
+            }
+        }
+    }
+
+    private fun spawnPickupNear(deathPos: FloatArray) {
+        val pickupType = when (Math.random()) {
+            in 0.0..0.4 -> PickupType.HEALTH
+            in 0.4..0.7 -> PickupType.AMMO
+            else -> PickupType.ARMOR
+        }
+
+        val offsetPos = floatArrayOf(
+            deathPos[0] + (-0.4f + Math.random().toFloat() * 0.8f),
+            deathPos[1] + 0.1f,
+            deathPos[2] + (-0.4f + Math.random().toFloat() * 0.8f)
+        )
+
+        val pickup = Pickup(type = pickupType, position = offsetPos)
+        pickups.add(pickup)
+        Log.i(TAG, "Spawned pickup ${pickupType.name} at (${offsetPos[0]}, ${offsetPos[1]}, ${offsetPos[2]})")
+    }
+
+    private fun updatePickups(deltaTime: Float, camera: Camera) {
+        val cameraPos = FloatArray(3)
+        camera.displayOrientedPose.getTranslation(cameraPos, 0)
+
+        for (pickup in pickups) {
+            pickup.update(deltaTime)
+            if (pickup.shouldCollect(cameraPos)) {
+                pickup.isCollected = true
+                applyPickupEffect(pickup)
+                pickupCollectedThisFrame = true
+            }
+        }
+        pickups.removeAll { it.isCollected }
+    }
+
+    private fun applyPickupEffect(pickup: Pickup) {
+        when (pickup.type) {
+            PickupType.HEALTH -> {
+                health = minOf(100, health + pickup.type.healthBonus)
+            }
+            PickupType.AMMO -> {
+                ammo += pickup.type.ammoBonus
+            }
+            PickupType.ARMOR -> {
+                armor = minOf(100, armor + pickup.type.armorBonus)
+            }
+        }
+        score += (pickup.type.pointValue * difficulty.scoreMultiplier).toInt()
+        Log.i(TAG, "Collected ${pickup.type.name} pickup! HP: $health, Armor: $armor, Ammo: $ammo, Score: $score")
+    }
+
     private fun rotateVector(v: FloatArray, q: FloatArray): FloatArray {
         // Quaternion rotation: v' = q * v * q^-1
         val qx = q[0]; val qy = q[1]; val qz = q[2]; val qw = q[3]
         val vx = v[0]; val vy = v[1]; val vz = v[2]
         return floatArrayOf(
-            vx + 2f * (qx * vz * vy - qy * vz - qz * vy + qw * vx) * 0f + // simplified
             (1f - 2f * (qy * qy + qz * qz)) * vx + 2f * (qx * qy - qw * qz) * vy + 2f * (qx * qz + qw * qy) * vz,
             2f * (qx * qy + qw * qz) * vx + (1f - 2f * (qx * qx + qz * qz)) * vy + 2f * (qy * qz - qw * qx) * vz,
             2f * (qx * qz - qw * qy) * vx + 2f * (qy * qz + qw * qx) * vy + (1f - 2f * (qx * qx + qy * qy)) * vz
@@ -174,7 +260,11 @@ class GameEngine(private val context: Context) {
         val enemy = Enemy(
             type = enemyType,
             position = floatArrayOf(spawnX, spawnY, spawnZ)
-        )
+        ).apply {
+            maxHealth = (enemyType.maxHealth * difficulty.hpMultiplier).toInt()
+            health = maxHealth
+        }
+
         enemies.add(enemy)
         Log.i(TAG, "Spawned ${enemyType.name} at ~${distance}m — wave $waveNumber (${enemiesSpawnedThisWave}/${enemiesPerWave})")
     }
@@ -188,8 +278,10 @@ class GameEngine(private val context: Context) {
         for (enemy in enemies) {
             enemy.update(deltaTime, cameraPos)
 
-            if (enemy.distanceToPlayer(cameraPos) < ENEMY_ATTACK_RANGE && now - lastDamageTime > 800) {
-                val damage = enemy.type.attackDamage
+            if (enemy.distanceToPlayer(cameraPos) < ENEMY_ATTACK_RANGE && enemy.canAttack() && now - lastDamageTime > 800) {
+                val baseDamage = enemy.type.attackDamage
+                val damage = (baseDamage * difficulty.damageMultiplier).toInt()
+
                 if (armor > 0) {
                     val absorbed = minOf(armor, damage / 3)
                     armor -= absorbed
@@ -198,8 +290,9 @@ class GameEngine(private val context: Context) {
                     health -= damage
                 }
                 lastDamageTime = now
+                enemy.resetAttackCooldown()
                 playerWasHit = true
-                Log.i(TAG, "Hit by ${enemy.type.name} for $damage — HP: $health")
+                Log.i(TAG, "Hit by ${enemy.type.name} for $damage — HP: $health, Armor: $armor")
             }
 
             if (!enemy.isAlive() && enemy.state == EnemyState.DEAD) {
@@ -209,8 +302,10 @@ class GameEngine(private val context: Context) {
         enemies.removeAll(toRemove)
     }
 
-    private fun shouldSpawn(now: Long): Boolean =
-        now - lastSpawnTime > SPAWN_INTERVAL_MS
+    private fun shouldSpawn(now: Long): Boolean {
+        val interval = (SPAWN_INTERVAL_MS / difficulty.spawnRateMultiplier).toLong()
+        return now - lastSpawnTime > interval
+    }
 
     private fun startNextWave() {
         waveNumber++
@@ -225,6 +320,19 @@ class GameEngine(private val context: Context) {
 
     fun getEnemyCount(): Int = enemies.size
     fun getEnemies(): List<Enemy> = enemies
+    fun getPickups(): List<Pickup> = pickups
+
+    fun getStats(): GameStats {
+        return GameStats(
+            score = score,
+            wave = waveNumber,
+            kills = kills,
+            shotsFired = shotsFired,
+            shotsHit = shotsHit,
+            timePlayed = timePlayed,
+            difficulty = difficulty.displayName
+        )
+    }
 
     companion object {
         private const val TAG = "GameEngine"

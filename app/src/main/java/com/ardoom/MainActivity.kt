@@ -17,8 +17,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.ardoom.ar.ARCameraManager
 import com.ardoom.audio.AudioManager
+import com.ardoom.game.Difficulty
 import com.ardoom.game.GameEngine
 import com.ardoom.game.GameState
+import com.ardoom.game.ScoreManager
 import com.ardoom.game.Weapon
 import com.ardoom.rendering.DoomRenderer
 import com.google.ar.core.ArCoreApk
@@ -222,7 +224,9 @@ class MainActivity : AppCompatActivity() {
             onFire = { audioManager?.playWeaponSound(gameEngine.currentWeapon); hapticManager?.fire() },
             onHit = { hapticManager?.hit(); audioManager?.playSound("enemy_die") },
             onPlayerHit = { hapticManager?.damage(); audioManager?.playSound("player_hurt") },
-            onWaveStart = { wave -> showWaveMessage(wave) }
+            onWaveStart = { wave -> showWaveMessage(wave); audioManager?.playWaveCompleteSound() },
+            onPickupCollected = { audioManager?.playPickupSound() },
+            onPlayerDeath = { audioManager?.playPlayerDeathSound(); onGameOver() }
         )
 
         glSurfaceView.apply {
@@ -231,11 +235,12 @@ class MainActivity : AppCompatActivity() {
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
 
-        // Load audio
+        // Load audio & start ambient music
         audioManager?.loadSounds()
+        audioManager?.startBackgroundMusic()
 
         // Start the game
-        gameEngine.startGame()
+        gameEngine.startGame(Difficulty.MEDIUM)
 
         // Hide loading text, show HUD
         loadingText.visibility = View.GONE
@@ -248,6 +253,12 @@ class MainActivity : AppCompatActivity() {
     private fun setupTouchControls() {
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (gameEngine.gameState == GameState.GAME_OVER) {
+                    audioManager?.playMenuClickSound()
+                    gameEngine.startGame(Difficulty.MEDIUM)
+                    showWaveMessage(1)
+                    return true
+                }
                 if (gameEngine.gameState != GameState.PLAYING) return false
                 renderer?.fire(e.x, e.y)
                 return true
@@ -271,7 +282,7 @@ class MainActivity : AppCompatActivity() {
                     cycleWeapon()
                 } else if (dy > 150 && kotlin.math.abs(velocityY) > 500) {
                     gameEngine.ammo += 15
-                    audioManager?.playSound("pickup")
+                    audioManager?.playPickupSound()
                     updateHUD()
                 }
                 return true
@@ -286,50 +297,56 @@ class MainActivity : AppCompatActivity() {
 
     private fun cycleWeapon() {
         val weapons = Weapon.values()
-        val currentIdx = weapons.indexOf(gameEngine.currentWeapon)
-        val nextIdx = (currentIdx + 1) % weapons.size
-        gameEngine.currentWeapon = weapons[nextIdx]
-        audioManager?.playSound("pickup")
-        hapticManager?.tick()
+        val nextIndex = (gameEngine.currentWeapon.ordinal + 1) % weapons.size
+        gameEngine.currentWeapon = weapons[nextIndex]
+        audioManager?.playMenuClickSound()
         updateHUD()
-    }
-
-    private fun showWaveMessage(wave: Int) {
-        runOnUiThread {
-            hudMessage.text = getString(R.string.wave_start, wave)
-            hudMessage.visibility = View.VISIBLE
-            hudMessage.postDelayed({ hudMessage.visibility = View.GONE }, 2000)
-        }
     }
 
     fun updateHUD() {
         runOnUiThread {
-            hudHealth.text = getString(R.string.hud_health_label) + ": " + gameEngine.health
-            hudAmmo.text = getString(R.string.hud_ammo_label) + ": " + gameEngine.ammo
-            hudScore.text = getString(R.string.hud_score_label) + ": " + gameEngine.score
-            hudWave.text = getString(R.string.hud_wave_label) + ": " + gameEngine.waveNumber
-            hudWeapon.text = gameEngine.currentWeapon.name
-
-            hudHealth.setTextColor(
-                when {
-                    gameEngine.health > 60 -> 0xFF00FF00.toInt()
-                    gameEngine.health > 30 -> 0xFFFFFF00.toInt()
-                    else -> 0xFFFF0000.toInt()
-                }
-            )
-
             if (gameEngine.gameState == GameState.GAME_OVER) {
-                hudMessage.text = getString(R.string.game_over, gameEngine.score, gameEngine.waveNumber)
-                hudMessage.visibility = View.VISIBLE
+                return@runOnUiThread
             }
+
+            hudHealth.text = "HEALTH: ${gameEngine.health}" + if (gameEngine.armor > 0) " | ARMOR: ${gameEngine.armor}" else ""
+            hudAmmo.text = "AMMO: ${gameEngine.ammo}"
+            hudScore.text = "SCORE: ${gameEngine.score}"
+            hudWave.text = "WAVE: ${gameEngine.waveNumber}"
+            hudWeapon.text = gameEngine.currentWeapon.displayName
         }
     }
 
-    private fun showError(message: String) {
+    private fun showWaveMessage(wave: Int) {
         runOnUiThread {
-            hudMessage.text = message
+            hudMessage.text = "WAVE $wave"
             hudMessage.visibility = View.VISIBLE
-            hudMessage.setTextColor(0xFFFF0000.toInt())
+            hudMessage.postDelayed({
+                hudMessage.visibility = View.GONE
+            }, 2000)
+        }
+    }
+
+    private fun onGameOver() {
+        val stats = gameEngine.getStats()
+        val isHighScore = ScoreManager.saveGameStats(this, stats)
+        val highScore = ScoreManager.getHighScore(this)
+
+        runOnUiThread {
+            val statsText = buildString {
+                append("YOU DIED\n\n")
+                append("SCORE: ${stats.score}\n")
+                if (isHighScore) append("NEW HIGH SCORE!\n") else append("HIGH SCORE: $highScore\n")
+                append("RANK: ${stats.rank}\n")
+                append("WAVE: ${stats.wave} | KILLS: ${stats.kills}\n")
+                append("ACCURACY: ${(stats.accuracy * 100).toInt()}%\n")
+                append("TIME: ${stats.timePlayed.toInt()}s\n\n")
+                append("TAP TO RESTART")
+            }
+
+            hudMessage.text = statsText
+            hudMessage.textSize = 24f
+            hudMessage.visibility = View.VISIBLE
         }
     }
 
@@ -351,6 +368,7 @@ class MainActivity : AppCompatActivity() {
             }
             arSession?.resume()
             glSurfaceView.onResume()
+            audioManager?.resumeBackgroundMusic()
         } catch (e: Exception) {
             Log.e(TAG, "onResume failed", e)
             showFatalError("Resume error: ${e.message}")
@@ -362,6 +380,7 @@ class MainActivity : AppCompatActivity() {
         try {
             glSurfaceView.onPause()
             arSession?.pause()
+            audioManager?.pauseBackgroundMusic()
         } catch (e: Exception) {
             Log.e(TAG, "onPause failed", e)
         }
@@ -371,6 +390,7 @@ class MainActivity : AppCompatActivity() {
         try {
             arSession?.close()
             arSession = null
+            audioManager?.stopBackgroundMusic()
             audioManager?.release()
         } catch (e: Exception) {
             Log.e(TAG, "onDestroy failed", e)

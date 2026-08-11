@@ -8,19 +8,58 @@
     <string name="hud_ammo_label">AMMO</string>
     <string name="hud_score_label">SCORE</string>
     <string name="hud_wave_label">WAVE</string>
+    <string name="hud_fps_label">FPS: %1$d</string>
 
     <!-- Messages -->
     <string name="arcore_unsupported">ARCore is not supported on this device. You need an ARCore-compatible phone.</string>
     <string name="ar_init_failed">Failed to initialize AR. Please make sure ARCore is installed.</string>
     <string name="camera_denied">Camera permission is required to play AR Doom. The game cannot run without it.</string>
 
-    <!-- Game states -->
+    <!-- Game states & Messages -->
     <string name="game_over">GAME OVER\n\nYou died. RIP and tear no more.\nFinal Score: %1$d\nWave Reached: %2$d</string>
     <string name="wave_start">WAVE %1$d</string>
     <string name="out_of_ammo">OUT OF AMMO!</string>
 
-    <!-- Menus -->
+    <!-- Main Menu -->
+    <string name="main_menu_title">AR DOOM</string>
+    <string name="main_menu_subtitle">RIP AND TEAR</string>
     <string name="menu_start">RIP AND TEAR</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_quit">Quit</string>
+    <string name="button_play">PLAY GAME</string>
+    <string name="button_settings">SETTINGS</string>
+    <string name="button_how_to_play">HOW TO PLAY</string>
+    <string name="high_score_label">HIGH SCORE: %1$d</string>
+
+    <!-- How to Play Dialog -->
+    <string name="how_to_play_title">HOW TO PLAY</string>
+    <string name="how_to_play_content">1. Look around your room using your phone camera.\n2. Tap screen to FIRE weapon.\n3. Long press or swipe left/right to CYCLE WEAPONS.\n4. Swipe down to RELOAD AMMO.\n5. Defend yourself against incoming demons!</string>
+    <string name="button_close">CLOSE</string>
+
+    <!-- Settings -->
+    <string name="settings_title">SETTINGS</string>
+    <string name="label_master_volume">Master Volume: %1$d%%</string>
+    <string name="label_sfx_volume">SFX Volume: %1$d%%</string>
+    <string name="label_haptics">Haptic Feedback</string>
+    <string name="label_difficulty">Difficulty</string>
+    <string name="label_camera_sensitivity">Camera Sensitivity: %1$.1fx</string>
+    <string name="label_show_fps">Show FPS Counter</string>
+    <string name="button_save">SAVE SETTINGS</string>
+    <string name="button_back">BACK</string>
+
+    <!-- Difficulty Names -->
+    <string name="difficulty_easy">EASY (I\'m Too Young to Die)</string>
+    <string name="difficulty_normal">NORMAL (Hurt Me Plenty)</string>
+    <string name="difficulty_hard">HARD (Ultra-Violence)</string>
+    <string name="difficulty_nightmare">NIGHTMARE!</string>
+
+    <!-- Pause and Game Over Overlays -->
+    <string name="pause_title">GAME PAUSED</string>
+    <string name="button_resume">RESUME</string>
+    <string name="button_restart">RETRY</string>
+    <string name="button_quit_menu">QUIT TO MENU</string>
+    <string name="game_over_title">YOU DIED</string>
+    <string name="game_over_score_label">Final Score: %1$d</string>
+    <string name="game_over_high_score_label">High Score: %1$d</string>
+    <string name="new_high_score_banner">NEW HIGH SCORE!</string>
 </resources>

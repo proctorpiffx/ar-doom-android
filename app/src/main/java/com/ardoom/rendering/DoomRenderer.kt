@@ -23,12 +23,15 @@ class DoomRenderer(
         fun onHit()
         fun onPlayerHit()
         fun onWaveStart(wave: Int)
+        fun onPickupCollected()
+        fun onPlayerDeath()
     }
 
     private var callbacks: RendererCallbacks? = null
     private var lastPlayerHitTime = 0L
     private var lastWave = 1
     private var hudUpdateTimer = 0f
+    private var hasTriggeredGameOver = false
 
     private lateinit var backgroundRenderer: BackgroundRenderer
     private lateinit var spriteShader: SpriteShader
@@ -47,11 +50,24 @@ class DoomRenderer(
         onPlayerHit: () -> Unit,
         onWaveStart: (Int) -> Unit
     ) {
+        setCallbacks(onFire, onHit, onPlayerHit, onWaveStart, {}, {})
+    }
+
+    fun setCallbacks(
+        onFire: () -> Unit,
+        onHit: () -> Unit,
+        onPlayerHit: () -> Unit,
+        onWaveStart: (Int) -> Unit,
+        onPickupCollected: () -> Unit,
+        onPlayerDeath: () -> Unit
+    ) {
         callbacks = object : RendererCallbacks {
             override fun onFire() = onFire()
             override fun onHit() = onHit()
             override fun onPlayerHit() = onPlayerHit()
             override fun onWaveStart(wave: Int) = onWaveStart(wave)
+            override fun onPickupCollected() = onPickupCollected()
+            override fun onPlayerDeath() = onPlayerDeath()
         }
     }
 
@@ -104,19 +120,36 @@ class DoomRenderer(
                 }
                 gameEngine.playerWasHit = false
 
+                // Check for pickup collection sound
+                if (gameEngine.pickupCollectedThisFrame) {
+                    callbacks?.onPickupCollected()
+                    gameEngine.pickupCollectedThisFrame = false
+                }
+
                 // Wave change callback
                 if (gameEngine.waveNumber != lastWave) {
                     lastWave = gameEngine.waveNumber
                     callbacks?.onWaveStart(lastWave)
                 }
 
+                // Check player death callback
+                if (gameEngine.gameState == GameState.GAME_OVER && !hasTriggeredGameOver) {
+                    hasTriggeredGameOver = true
+                    callbacks?.onPlayerDeath()
+                } else if (gameEngine.gameState == GameState.PLAYING) {
+                    hasTriggeredGameOver = false
+                }
+
                 // Render enemies
                 renderEnemies(camera)
+
+                // Render pickups
+                renderPickups(camera)
 
                 // Render effects
                 renderEffects(camera)
 
-                // Update HUD periodically (every ~0.5s)
+                // Update HUD periodically (every ~0.25s)
                 hudUpdateTimer += deltaTime
                 if (hudUpdateTimer > 0.25f) {
                     hudUpdateTimer = 0f
@@ -130,7 +163,7 @@ class DoomRenderer(
                 }
             }
         } finally {
-            // Frame is managed by ARCore — no need to close
+            // Frame managed by ARCore
         }
     }
 
@@ -164,23 +197,46 @@ class DoomRenderer(
             // Billboard rotation
             billboardMatrix(modelMatrix, camera)
 
-            val scale = when (enemy.type) {
+            val baseScale = when (enemy.type) {
                 com.ardoom.game.EnemyType.IMP -> 0.5f
                 com.ardoom.game.EnemyType.SOLDIER -> 0.45f
                 com.ardoom.game.EnemyType.DEMON -> 0.7f
                 com.ardoom.game.EnemyType.CACODEMON -> 0.6f
                 com.ardoom.game.EnemyType.BARON -> 0.8f
             }
+            val scale = baseScale * enemy.currentScale
             android.opengl.Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
 
-            val alpha = when (enemy.state) {
-                EnemyState.HURT -> 1.0f
-                EnemyState.DYING -> 0.5f
-                else -> 1.0f
-            }
-
             val texture = SpriteTextureManager.getTexture(enemy.type, enemy.state)
-            spriteShader.draw(modelMatrix, viewMatrix, projectionMatrix, texture, alpha)
+            spriteShader.draw(modelMatrix, viewMatrix, projectionMatrix, texture, enemy.alpha)
+        }
+    }
+
+    private fun renderPickups(camera: Camera) {
+        val viewMatrix = FloatArray(16)
+        val projectionMatrix = FloatArray(16)
+        camera.getProjectionMatrix(projectionMatrix, 0, 0.1f, 100f)
+        camera.getViewMatrix(viewMatrix, 0)
+
+        for (pickup in gameEngine.getPickups()) {
+            if (pickup.isCollected) continue
+
+            val modelMatrix = FloatArray(16)
+            android.opengl.Matrix.setIdentityM(modelMatrix, 0)
+            android.opengl.Matrix.translateM(
+                modelMatrix, 0,
+                pickup.position[0], pickup.position[1], pickup.position[2]
+            )
+
+            // Billboard toward camera + pickup spinning rotation
+            billboardMatrix(modelMatrix, camera)
+            android.opengl.Matrix.rotateM(modelMatrix, 0, pickup.rotation, 0f, 1f, 0f)
+
+            val scale = pickup.type.iconSize
+            android.opengl.Matrix.scaleM(modelMatrix, 0, scale, scale, scale)
+
+            val c = pickup.type.color
+            effectShader.drawProjectile(modelMatrix, viewMatrix, projectionMatrix, c[0], c[1], c[2])
         }
     }
 
